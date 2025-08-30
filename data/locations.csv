@@ -1,0 +1,11 @@
+city,country,language,device
+"New York","US","en","desktop"
+"Los Angeles","US","en","desktop"
+"Chicago","US","en","mobile"
+"London","GB","en","desktop"
+"Paris","FR","fr","mobile"
+"Toronto","CA","en","desktop"
+"Berlin","DE","de","mobile"
+"Tokyo","JP","ja","desktop"
+"Sydney","AU","en","mobile"
+"Mexico City","MX","es","desktop" 

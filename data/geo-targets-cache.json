@@ -1,0 +1,44 @@
+{
+  "US": {
+    "New York": "New York,New York,United States",
+    "Los Angeles": "Los Angeles,California,United States",
+    "Chicago": "Chicago,Illinois,United States",
+    "Houston": "Houston,Texas,United States",
+    "Phoenix": "Phoenix,Arizona,United States"
+  },
+  "GB": {
+    "London": "London,England,United Kingdom",
+    "Manchester": "Manchester,England,United Kingdom",
+    "Birmingham": "Birmingham,England,United Kingdom"
+  },
+  "FR": {
+    "Paris": "Paris,France",
+    "Marseille": "Marseille,France",
+    "Lyon": "Lyon,France"
+  },
+  "CA": {
+    "Toronto": "Toronto,Ontario,Canada",
+    "Montreal": "Montreal,Quebec,Canada",
+    "Vancouver": "Vancouver,British Columbia,Canada"
+  },
+  "DE": {
+    "Berlin": "Berlin,Germany",
+    "Munich": "Munich,Bavaria,Germany",
+    "Hamburg": "Hamburg,Germany"
+  },
+  "JP": {
+    "Tokyo": "Tokyo,Japan",
+    "Osaka": "Osaka,Japan",
+    "Kyoto": "Kyoto,Japan"
+  },
+  "AU": {
+    "Sydney": "Sydney,New South Wales,Australia",
+    "Melbourne": "Melbourne,Victoria,Australia",
+    "Brisbane": "Brisbane,Queensland,Australia"
+  },
+  "MX": {
+    "Mexico City": "Mexico City,Mexico",
+    "Guadalajara": "Guadalajara,Jalisco,Mexico",
+    "Monterrey": "Monterrey,Nuevo Leon,Mexico"
+  }
+}
