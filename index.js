@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import fs from 'fs';
-import path from 'path';
 import csv from 'csv-parser';
 import { createObjectCsvWriter as createCsvWriter } from 'csv-writer';
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 import { getCanonicalName, generateUule } from './geo-targets.js';
 
 dotenv.config();
-
-const program = new Command();
 
 // Configuration
 const CONFIG = {
@@ -37,14 +35,26 @@ const extractOrganicResults = (serpResponse, query, location, device, surface) =
   
   try {
     // Handle JSON results from Bright Data
-    if (serpResponse.organic && Array.isArray(serpResponse.organic)) {
-      console.log(`📊 Found ${serpResponse.organic.length} organic results in JSON response`);
+    
+    // The API response has the actual data in the 'body' field as a JSON string
+    let searchData = serpResponse;
+    if (serpResponse.body && typeof serpResponse.body === 'string') {
+      try {
+        searchData = JSON.parse(serpResponse.body);
+      } catch (parseError) {
+        console.error('Error parsing response body:', parseError.message);
+        return results;
+      }
+    }
+    
+    if (searchData.organic && Array.isArray(searchData.organic)) {
+      console.log(`📊 Found ${searchData.organic.length} organic results in JSON response`);
       
-      serpResponse.organic.forEach((result, index) => {
+      searchData.organic.forEach((result, index) => {
         const position = index + 1;
         const title = result.title || result.link_title || '';
         const url = result.link || result.url || '';
-        const snippet = result.snippet || '';
+        const snippet = result.description || result.snippet || '';
         const domain = extractDomainFromUrl(url);
         
         if (title && url) {
@@ -82,14 +92,26 @@ const extractLocalResults = (serpResponse, query, location, device, surface) => 
   
   try {
     // Handle JSON results from Bright Data
-    if (serpResponse.local_results && Array.isArray(serpResponse.local_results)) {
-      console.log(`📊 Found ${serpResponse.local_results.length} local results in JSON response`);
+    
+    // The API response has the actual data in the 'body' field as a JSON string
+    let searchData = serpResponse;
+    if (serpResponse.body && typeof serpResponse.body === 'string') {
+      try {
+        searchData = JSON.parse(serpResponse.body);
+      } catch (parseError) {
+        console.error('Error parsing response body:', parseError.message);
+        return results;
+      }
+    }
+    
+    if (searchData.local_results && Array.isArray(searchData.local_results)) {
+      console.log(`📊 Found ${searchData.local_results.length} local results in JSON response`);
       
-      serpResponse.local_results.forEach((result, index) => {
+      searchData.local_results.forEach((result, index) => {
         const position = index + 1;
         const title = result.title || result.link_title || '';
         const url = result.link || result.url || '';
-        const snippet = result.snippet || '';
+        const snippet = result.description || result.snippet || '';
         const domain = extractDomainFromUrl(url);
         
         if (title && url) {
@@ -241,38 +263,62 @@ const trackRanks = async (queriesPath, locationsPath, engine, surface, includeMa
     const allResults = [];
     const surfaces = includeMaps ? [surface, 'maps'] : [surface];
     
+    // Create all tasks to be processed
+    const tasks = [];
     for (const query of queries) {
       for (const location of locations) {
         for (const currentSurface of surfaces) {
-          console.log(`Processing: "${query.keyword}" in ${location.city} (${currentSurface})`);
-          
-          const serpResponse = await callSerpApi(
-            query.keyword,
+          tasks.push({
+            query,
             location,
-            location.device,
-            currentSurface
-          );
-          
-          if (serpResponse) {
-            let results = [];
-            
-            if (currentSurface === 'maps') {
-              results = extractLocalResults(serpResponse, query.keyword, location, location.device, currentSurface);
-            } else {
-              results = extractOrganicResults(serpResponse, query.keyword, location, location.device, currentSurface);
-            }
-            
-            // Normalize and add results
-            results.forEach(result => {
-              allResults.push(result);
-            });
-          }
-          
-          // Add delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 1000));
+            surface: currentSurface,
+            description: `"${query.keyword}" in ${location.city} (${currentSurface})`
+          });
         }
       }
     }
+    
+    console.log(`Total tasks to process: ${tasks.length}`);
+    
+    // Process tasks with controlled concurrency
+    const concurrency = 5; // Process 5 requests simultaneously
+    let completed = 0;
+    
+    const concurrentResults = await processConcurrently(tasks, concurrency, async (task) => {
+      const { query, location, surface: currentSurface, description } = task;
+      
+      console.log(`Processing: ${description}`);
+      
+      const serpResponse = await callSerpApi(
+        query.keyword,
+        location,
+        location.device,
+        currentSurface
+      );
+      
+      if (serpResponse) {
+        let taskResults = [];
+        
+        if (currentSurface === 'maps') {
+          taskResults = extractLocalResults(serpResponse, query.keyword, location, location.device, currentSurface);
+        } else {
+          taskResults = extractOrganicResults(serpResponse, query.keyword, location, location.device, currentSurface);
+        }
+        
+        // Normalize and add results
+        taskResults.forEach(result => {
+          allResults.push(result);
+        });
+        
+        completed++;
+        console.log(`✅ ${description}: Found ${taskResults.length} results (${completed}/${tasks.length})`);
+        return taskResults;
+      } else {
+        completed++;
+        console.log(`❌ ${description}: No response (${completed}/${tasks.length})`);
+        return [];
+      }
+    });
     
     console.log(`Total results collected: ${allResults.length}`);
     
@@ -287,68 +333,88 @@ const trackRanks = async (queriesPath, locationsPath, engine, surface, includeMa
     }
     
     // Write output files
-    const jsonPath = path.join(outputDir, 'ranks.json');
-    const csvPath = path.join(outputDir, 'ranks.csv');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const jsonPath = path.join(outputDir, `ranks-${timestamp}.json`);
+    const csvPath = path.join(outputDir, `ranks-${timestamp}.csv`);
     
     writeJsonFile(deduplicatedResults, jsonPath);
     await writeCsvFile(deduplicatedResults, csvPath);
     
-    console.log(`Results written to:`);
-    console.log(`  JSON: ${jsonPath}`);
-    console.log(`  CSV: ${csvPath}`);
+    console.log(`\n📊 Rank tracking completed!`);
+    console.log(`📁 JSON: ${jsonPath}`);
+    console.log(`📁 CSV: ${csvPath}`);
+    console.log(`📈 Total results: ${deduplicatedResults.length}`);
     
     return deduplicatedResults;
     
   } catch (error) {
-    console.error('Error in rank tracking:', error);
+    console.error('Error in rank tracking:', error.message);
     throw error;
   }
 };
 
+// Process tasks with controlled concurrency
+const processConcurrently = async (tasks, concurrency, processor) => {
+  const results = [];
+  const running = new Set();
+  
+  for (const task of tasks) {
+    // Wait if we've reached the concurrency limit
+    if (running.size >= concurrency) {
+      await Promise.race(running);
+    }
+    
+    // Process the task
+    const promise = processor(task).then(result => {
+      running.delete(promise);
+      return result;
+    });
+    
+    running.add(promise);
+    results.push(promise);
+  }
+  
+  // Wait for all remaining tasks to complete
+  await Promise.all(running);
+  
+  return Promise.all(results);
+};
+
 // CLI setup
+const program = new Command();
+
 program
-  .name('serp-rank-tracker')
-  .description('SERP rank tracking tool for keywords across cities and devices')
+  .name('bright-data-serp-rank-tracker')
+  .description('Track SERP rankings across keywords, locations, and devices using Bright Data API')
   .version('1.0.0')
   .option('-e, --engine <engine>', 'Search engine (google, bing)', 'google')
   .option('-s, --surface <surface>', 'Search surface (search, maps)', 'search')
   .option('-q, --queries <path>', 'Path to queries CSV file', 'data/queries.csv')
   .option('-l, --locations <path>', 'Path to locations CSV file', 'data/locations.csv')
-  .option('--maps', 'Include maps surface results', false)
-  .parse();
+  .option('-m, --maps', 'Include maps surface in addition to main surface')
+  .option('-c, --concurrency <number>', 'Number of concurrent requests (default: 5)', '5')
+  .action(async (options) => {
+    try {
+      const concurrency = parseInt(options.concurrency) || 5;
+      console.log(`🚀 Starting SERP rank tracking with ${concurrency} concurrent requests...`);
+      
+      const results = await trackRanks(
+        options.queries,
+        options.locations,
+        options.engine,
+        options.surface,
+        options.maps
+      );
+      
+      console.log('\n🎉 Rank tracking completed successfully!');
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ Rank tracking failed:', error.message);
+      process.exit(1);
+      }
+  });
 
-const options = program.opts();
+program.parse();
 
-// Validate inputs
-if (!fs.existsSync(options.queries)) {
-  console.error(`Queries file not found: ${options.queries}`);
-  process.exit(1);
-}
-
-if (!fs.existsSync(options.locations)) {
-  console.error(`Locations file not found: ${options.locations}`);
-  process.exit(1);
-}
-
-if (!CONFIG.apiToken || CONFIG.apiToken === 'YOUR_API_KEY') {
-  console.error('Please set BRIGHT_DATA_API_KEY environment variable or update CONFIG.apiToken');
-  process.exit(1);
-}
-
-// Run rank tracking
-console.log('Starting SERP rank tracking...');
-console.log(`Engine: ${options.engine}`);
-console.log(`Surface: ${options.surface}`);
-console.log(`Include Maps: ${options.maps}`);
-console.log(`Queries: ${options.queries}`);
-console.log(`Locations: ${options.locations}`);
-console.log('---');
-
-trackRanks(options.queries, options.locations, options.engine, options.surface, options.maps)
-  .then(() => {
-    console.log('Rank tracking completed successfully!');
-  })
-  .catch((error) => {
-    console.error('Rank tracking failed:', error);
-    process.exit(1);
-  }); 
+// Export for testing
+export { trackRanks }; 

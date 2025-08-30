@@ -1,0 +1,103 @@
+name: 🚀 Daily SERP Rank Tracking
+
+on:
+  schedule:
+    # Run every day at 6:00 AM Europe time (CET/CEST)
+    # UTC times: 5:00 AM in winter (CET), 4:00 AM in summer (CEST)
+    - cron: '0 5 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (fewer queries/locations)'
+        required: false
+        default: 'false'
+        type: boolean
+      concurrency:
+        description: 'Number of concurrent requests'
+        required: false
+        default: '5'
+        type: string
+
+jobs:
+  rank-tracking:
+    name: 📊 Track SERP Rankings
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: 📦 Install dependencies
+        run: npm ci
+        
+      - name: 🔐 Setup environment variables
+        run: |
+          echo "BRIGHT_DATA_API_KEY=${{ secrets.BRIGHT_DATA_API_KEY }}" >> .env
+          echo "BRIGHT_DATA_ZONE=${{ secrets.BRIGHT_DATA_ZONE || 'serp_api1' }}" >> .env
+          
+      - name: 🧪 Run rank tracking
+        run: |
+          if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+            echo "🧪 Running in TEST MODE with limited data..."
+            npm run dev -- --queries data/test-queries.csv --locations data/test-locations.csv --concurrency ${{ github.event.inputs.concurrency || '3' }}
+          else
+            echo "🚀 Running FULL rank tracking..."
+            npm run dev -- --concurrency ${{ github.event.inputs.concurrency || '5' }}
+          fi
+          
+      - name: 📁 Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: serp-rank-results-${{ github.run_id }}
+          path: output/
+          retention-days: 30
+          
+      - name: 📊 Generate summary
+        if: always()
+        run: |
+          echo "## 📊 SERP Rank Tracking Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "output" ]; then
+            echo "### 📁 Generated Files:" >> $GITHUB_STEP_SUMMARY
+            ls -la output/ | while read line; do
+              echo "- \`$line\`" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Count results if JSON files exist
+            for file in output/*.json; do
+              if [ -f "$file" ]; then
+                count=$(jq 'length' "$file" 2>/dev/null || echo "0")
+                echo "### 📈 Results Summary:" >> $GITHUB_STEP_SUMMARY
+                echo "- **File**: \`$(basename "$file")\`" >> $GITHUB_STEP_SUMMARY
+                echo "- **Total Results**: $count" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          else
+            echo "❌ No output directory found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: 🎯 Success notification
+        if: success()
+        run: |
+          echo "✅ SERP rank tracking completed successfully!"
+          echo "📁 Results saved to output/ directory"
+          echo "📊 Check the artifacts tab for downloadable results"
+          
+      - name: ❌ Failure notification
+        if: failure()
+        run: |
+          echo "❌ SERP rank tracking failed!"
+          echo "🔍 Check the logs above for error details"
+          echo "📧 Consider checking API credentials and rate limits" 
