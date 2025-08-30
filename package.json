@@ -1,0 +1,22 @@
+{
+  "name": "bright-data-serp-rank-tracker-nodejs-project",
+  "version": "1.0.0",
+  "description": "Professional SERP rank tracking tool for keywords across cities and devices using Bright Data API",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js",
+    "demo": "node demo.js"
+  },
+  "dependencies": {
+    "csv-parser": "^3.0.0",
+    "csv-writer": "^1.6.0",
+    "axios": "^1.6.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1"
+  },
+  "keywords": ["serp", "rank-tracking", "seo", "bright-data"],
+  "author": "",
+  "license": "MIT"
+} 

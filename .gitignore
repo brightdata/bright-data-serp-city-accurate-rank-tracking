@@ -14,7 +14,10 @@ yarn-error.log*
 # Output files
 output/
 *.csv
+# JSON files (but allow package.json and package-lock.json)
 *.json
+!package.json
+!package-lock.json
 
 # Logs
 logs
