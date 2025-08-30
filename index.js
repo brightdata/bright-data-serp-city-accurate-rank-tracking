@@ -17,77 +17,116 @@ const program = new Command();
 const CONFIG = {
   apiToken: process.env.BRIGHT_DATA_API_KEY || 'YOUR_API_KEY',
   zone: process.env.BRIGHT_DATA_ZONE || 'serp_api1',
-  baseUrl: 'https://api.brightdata.com/request'
+  baseUrl: 'https://api.brightdata.com/request',
+  format: "raw"
 };
 
-// Normalized result schema
-const normalizeResult = (result, keyword, engine, surface, city, device, position) => {
-  const domain = result.link ? new URL(result.link).hostname : '';
-  
-  return {
-    keyword,
-    engine,
-    surface,
-    city,
-    device,
-    position,
-    title: result.title || '',
-    url: result.link || '',
-    domain,
-    snippet: result.snippet || ''
-  };
+// Extract domain from URL
+const extractDomainFromUrl = (url) => {
+  try {
+    const domain = new URL(url).hostname;
+    return domain.startsWith('www.') ? domain.substring(4) : domain;
+  } catch (error) {
+    return url;
+  }
 };
 
 // Extract organic results from SERP response
-const extractOrganicResults = (serpResponse) => {
+const extractOrganicResults = (serpResponse, query, location, device, surface) => {
   const results = [];
   
-  // The response contains HTML in the body
-  if (serpResponse.body) {
-    // For now, we'll simulate extracting results
-    // In a production environment, you'd parse the HTML to extract actual search results
-    // This is a simplified version for demonstration
-    
-    // Check if the response contains search results
-    if (serpResponse.body.includes('search') || serpResponse.body.includes('result')) {
-      // Simulate finding results - in reality, you'd parse the HTML
-      for (let i = 1; i <= 10; i++) {
-        results.push({
-          title: `Search Result ${i}`,
-          link: `https://example${i}.com`,
-          snippet: `This is search result snippet ${i}`,
-          position: i
-        });
-      }
+  try {
+    // Handle JSON results from Bright Data
+    if (serpResponse.organic && Array.isArray(serpResponse.organic)) {
+      console.log(`📊 Found ${serpResponse.organic.length} organic results in JSON response`);
+      
+      serpResponse.organic.forEach((result, index) => {
+        const position = index + 1;
+        const title = result.title || result.link_title || '';
+        const url = result.link || result.url || '';
+        const snippet = result.snippet || '';
+        const domain = extractDomainFromUrl(url);
+        
+        if (title && url) {
+          results.push({
+            keyword: query,
+            engine: 'google',
+            surface: surface,
+            city: location.city,
+            country: location.country,
+            device: device,
+            position: position,
+            title: title,
+            url: url,
+            domain: domain,
+            snippet: snippet
+          });
+        }
+      });
+      
+      return results;
     }
+    
+    console.warn('⚠️ No organic results found in response');
+    return results;
+    
+  } catch (error) {
+    console.error('Error extracting organic results:', error.message);
+    return results;
   }
-  
-  return results;
 };
 
 // Extract local/maps results from SERP response
-const extractLocalResults = (serpResponse) => {
+const extractLocalResults = (serpResponse, query, location, device, surface) => {
   const results = [];
   
-  if (serpResponse.local_results) {
-    serpResponse.local_results.forEach((result, index) => {
-      if (result.title && result.link) {
-        results.push({
-          ...result,
-          position: index + 1
-        });
-      }
-    });
+  try {
+    // Handle JSON results from Bright Data
+    if (serpResponse.local_results && Array.isArray(serpResponse.local_results)) {
+      console.log(`📊 Found ${serpResponse.local_results.length} local results in JSON response`);
+      
+      serpResponse.local_results.forEach((result, index) => {
+        const position = index + 1;
+        const title = result.title || result.link_title || '';
+        const url = result.link || result.url || '';
+        const snippet = result.snippet || '';
+        const domain = extractDomainFromUrl(url);
+        
+        if (title && url) {
+          results.push({
+            keyword: query,
+            engine: 'google',
+            surface: surface,
+            city: location.city,
+            country: location.country,
+            device: device,
+            position: position,
+            title: title,
+            url: url,
+            domain: domain,
+            snippet: snippet
+          });
+        }
+      });
+      
+      return results;
+    }
+    
+    console.warn('⚠️ No local results found in response');
+    return results;
+    
+  } catch (error) {
+    console.error('Error extracting local results:', error.message);
+    return results;
   }
-  
-  return results;
 };
 
 // Call Bright Data SERP API
 const callSerpApi = async (query, location, device, surface) => {
   try {
     // Build the search URL based on parameters
-    let searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    let searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&brd_json=1`;
+  
     
     // Add geo location parameter using uule format
     // uule format: "w+CAIQICIN[Canonical Name]"
@@ -218,23 +257,14 @@ const trackRanks = async (queriesPath, locationsPath, engine, surface, includeMa
             let results = [];
             
             if (currentSurface === 'maps') {
-              results = extractLocalResults(serpResponse);
+              results = extractLocalResults(serpResponse, query.keyword, location, location.device, currentSurface);
             } else {
-              results = extractOrganicResults(serpResponse);
+              results = extractOrganicResults(serpResponse, query.keyword, location, location.device, currentSurface);
             }
             
             // Normalize and add results
             results.forEach(result => {
-              const normalized = normalizeResult(
-                result,
-                query.keyword,
-                engine,
-                currentSurface,
-                location.city,
-                location.device,
-                result.position
-              );
-              allResults.push(normalized);
+              allResults.push(result);
             });
           }
           

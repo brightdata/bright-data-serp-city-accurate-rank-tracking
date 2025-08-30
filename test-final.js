@@ -12,7 +12,8 @@ dotenv.config();
 const CONFIG = {
   apiToken: process.env.BRIGHT_DATA_API_KEY || 'YOUR_API_KEY',
   zone: process.env.BRIGHT_DATA_ZONE || 'serp_api1',
-  baseUrl: 'https://api.brightdata.com/request'
+  baseUrl: 'https://api.brightdata.com/request',
+  format: "raw"
 };
 
 // Single test data
@@ -37,7 +38,7 @@ const testUpdatedGeoSystem = async () => {
     console.log('---\n');
     
     // Build the search URL with new geo parameters
-    let searchUrl = `https://www.google.com/search?q=${encodeURIComponent(TEST_DATA.query)}`;
+    let searchUrl = `https://www.google.com/search?q=${encodeURIComponent(TEST_DATA.query)}&brd_json=1`;
     
     // Add geo location parameter using the new system
     if (TEST_DATA.location.city && TEST_DATA.location.country) {
@@ -71,7 +72,7 @@ const testUpdatedGeoSystem = async () => {
     const response = await axios.post(CONFIG.baseUrl, {
       zone: CONFIG.zone,
       url: searchUrl,
-      format: 'json'
+      format: CONFIG.format
     }, {
       headers: {
         'Authorization': `Bearer ${CONFIG.apiToken}`,
@@ -84,30 +85,42 @@ const testUpdatedGeoSystem = async () => {
     console.log('Response status:', response.status);
     console.log('Response keys:', Object.keys(response.data));
     
-    if (response.data.body) {
-      console.log('Response body length:', response.data.body.length);
-      console.log('Response contains search results:', response.data.body.includes('search'));
-      
+    // Check if we have JSON results
+    if (response.data.organic) {
+      console.log('Response contains organic results:', response.data.organic.length);
+
       // Save response for inspection
       const outputDir = 'output';
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
-      
       const responsePath = path.join(outputDir, 'final-test-response.json');
       fs.writeFileSync(responsePath, JSON.stringify(response.data, null, 2));
       console.log(`\n📁 Full response saved to: ${responsePath}`);
-      
+
       // Check if response contains expected content
-      const body = response.data.body;
-      const hasPizzaResults = body.includes('pizza') || body.includes('Pizza');
-      const hasLocationResults = body.includes('New York') || body.includes('NY');
-      
+      const results = response.data.organic;
+      const hasPizzaResults = results.some(r =>
+        r.title && (r.title.toLowerCase().includes('pizza') || r.snippet?.toLowerCase().includes('pizza'))
+      );
+      const hasLocationResults = results.some(r =>
+        r.title && (r.title.includes('New York') || r.title.includes('NY') || r.snippet?.includes('New York'))
+      );
+
       console.log('\n📊 Response Analysis:');
       console.log('- Contains pizza results:', hasPizzaResults ? '✅' : '❌');
       console.log('- Contains location results:', hasLocationResults ? '✅' : '❌');
-      console.log('- Response size:', (body.length / 1024).toFixed(2), 'KB');
-      
+      console.log('- Total results:', results.length);
+
+      // Log first few results for debugging
+      console.log('\n🔍 First 3 results:');
+      results.slice(0, 3).forEach((result, index) => {
+        console.log(`${index + 1}. ${result.title || 'No title'}`);
+        console.log(`   URL: ${result.link || result.url || 'No URL'}`);
+        console.log(`   Snippet: ${result.snippet || 'No snippet'}`);
+        console.log('');
+      });
+
       if (hasPizzaResults && hasLocationResults) {
         console.log('\n🎉 Updated geo location system working correctly!');
         return true;
@@ -115,9 +128,11 @@ const testUpdatedGeoSystem = async () => {
         console.log('\n⚠️ Geo location targeting may not be working as expected.');
         return false;
       }
+    } else {
+      console.log('❌ No organic results found in JSON response');
+      console.log('Available keys:', Object.keys(response.data));
+      return false;
     }
-    
-    return true;
     
   } catch (error) {
     console.error('❌ Test failed:', error.message);

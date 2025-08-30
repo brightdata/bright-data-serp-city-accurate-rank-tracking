@@ -14,9 +14,17 @@ const GEO_TARGETS_CACHE = 'data/geo-targets-cache.json';
 // Generate uule parameter from canonical name
 const generateUule = (canonicalName) => {
   // Google's uule format: "w+CAIQICIN[Base64 encoded canonical name]"
-  // For now, we'll use a simplified approach
-  const encoded = encodeURIComponent(canonicalName);
-  return `w+CAIQICIN${encoded}`;
+  // The canonical name should be encoded in Base64
+  try {
+    // Convert to Base64
+    const encoded = Buffer.from(canonicalName).toString('base64');
+    return `w+CAIQICIN${encoded}`;
+  } catch (error) {
+    console.error('Error generating uule:', error.message);
+    // Fallback: use URL encoding
+    const encoded = encodeURIComponent(canonicalName);
+    return `w+CAIQICIN${encoded}`;
+  }
 };
 
 // Get geo targets from Google (or use cached version)
