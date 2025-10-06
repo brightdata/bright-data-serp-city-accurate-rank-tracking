@@ -14,7 +14,7 @@
     "csv-writer": "^1.6.0",
     "axios": "^1.6.0",
     "commander": "^11.1.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^17.2.3"
   },
   "keywords": ["serp", "rank-tracking", "seo", "bright-data"],
   "author": "",
